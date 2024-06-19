@@ -34,6 +34,7 @@ http.route({
           await ctx.runMutation(internal.users.updateUser, {
             tokenIdentifier: `${process.env.CLERK_APP_DOMAIN}|${result.data.id}`,
             image: result.data.image_url,
+            name: `${result.data.first_name ?? "Guest"} ${result.data.last_name ?? ""}`,
           })
           break
         case "session.created":
