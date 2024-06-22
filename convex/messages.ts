@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values"
-import { mutation } from "./_generated/server"
+import { mutation, query } from "./_generated/server"
 
 export const sendTextMessage = mutation({
   args: {
@@ -46,5 +46,53 @@ export const sendTextMessage = mutation({
     })
 
     // TODO => add GPT
+  },
+})
+
+export const getMessages = query({
+  args: {
+    conversation: v.id("conversations"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity()
+    if (!identity) {
+      throw new Error("Unauthorized")
+    }
+
+    const messages = await ctx.db
+      .query("messages")
+      .withIndex("by_conversation", (q) =>
+        q.eq("conversation", args.conversation)
+      )
+      .collect()
+
+    const userProfileCache = new Map()
+
+    const messagesWithSender = await Promise.all(
+      messages.map(async (message) => {
+        if (message.sender === "ChatGPT") {
+          const image =
+            message.messageType === "text" ? "/gpt.png" : "dall-e.png"
+          return { ...message, sender: { name: "ChatGPT", image } }
+        }
+        let sender
+        // Check if sender profile is in cache
+        if (userProfileCache.has(message.sender)) {
+          sender = userProfileCache.get(message.sender)
+        } else {
+          // Fetch sender profile from the database
+          sender = await ctx.db
+            .query("users")
+            .filter((q) => q.eq(q.field("_id"), message.sender))
+            .first()
+          // Cache the sender profile
+          userProfileCache.set(message.sender, sender)
+        }
+
+        return { ...message, sender }
+      })
+    )
+
+    return messagesWithSender
   },
 })
